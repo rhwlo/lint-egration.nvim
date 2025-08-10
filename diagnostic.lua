@@ -4,6 +4,13 @@ local ns = vim.api.nvim_create_namespace 'python-diagnostics'
 local root_indicators = { 'setup.cfg', 'pyproject.toml', '.git' }
 local lint_egration_path = vim.fn.expand '~/.local/bin/'
 
+local L = {}
+---@param source string
+---@param message string
+function L.err(source, message)
+  vim.notify(string.format('lintegration: %s: %s', source, message), vim.log.levels.ERROR, {})
+end
+
 ---@class LintegrationDiagnostic
 ---@field col integer
 ---@field lnum integer
@@ -12,23 +19,6 @@ local lint_egration_path = vim.fn.expand '~/.local/bin/'
 ---@field source string
 
 ---@alias LintegrationDiagnosticJSON {[string]: LintegrationDiagnostic[]}
-
----@param node TSNode?
----@return TSNode?
-local function find_encompassing_ancestor(node)
-  if node == nil then
-    return nil
-  end
-  local root = node:tree():root()
-  if root == nil then
-    return nil
-  end
-  local descendant = root:child_with_descendant(node)
-  while descendant ~= nil and descendant ~= node and descendant:start() ~= node:start() and descendant:end_() ~= node:end_() do
-    descendant = descendant:child_with_descendant(node)
-  end
-  return descendant
-end
 
 ---@param source string
 ---@param buffer integer
@@ -54,22 +44,15 @@ function M.lintegration_diagnostic_to_vim_diagnostic(source, buffer)
   return _ld_to_vd
 end
 
----@param json_input table
----@return {result: LintegrationDiagnosticJSON, error: string?}
-local function validate_lintegration_json(json_input)
-  -- skip validation for now; fix this later??
-  return {
-    result = json_input,
-    nil,
-  }
-end
-
 ---@param bufnr integer
 ---@return vim.Diagnostic[]
 function M.get_flake8_diagnostics(bufnr)
+  local function err(str)
+    L.err('flake8', str)
+  end
   local bufname = vim.fs.abspath(vim.fn.bufname(bufnr))
   local root = vim.fs.root(bufname, root_indicators)
-  local flake8_cli_expr = { vim.fs.joinpath(lint_egration_path, 'flake8.sh') }
+  local flake8_cli_expr = { vim.fs.joinpath(lint_egration_path, 'flake8_for_nvim.sh') }
   local system_opts = { text = true }
 
   if root ~= nil then
@@ -90,17 +73,19 @@ function M.get_flake8_diagnostics(bufnr)
   local command_result = vim.system(flake8_cli_expr, system_opts):wait()
 
   if command_result.code ~= 0 or command_result.stdout == nil then
-    vim.notify(string.format('Lintegration: flake8: %s', command_result.stderr), vim.log.levels.ERROR, {})
-    return {}
-  end
-  local parse_result = validate_lintegration_json(vim.json.decode(command_result.stdout))
-
-  if parse_result.error ~= nil then
-    vim.notify(string.format('Lintegration: flake8: %s', parse_result.error), vim.log.levels.ERROR, {})
+    err(command_result.stderr)
     return {}
   end
 
-  local diagnostic_results = parse_result.result[bufname]
+  ---@type boolean, LintegrationDiagnosticJSON
+  local ok, parse_result = pcall(vim.json.decode, command_result.stdout)
+
+  if not ok then
+    err(parse_result)
+    return {}
+  end
+
+  local diagnostic_results = parse_result[bufname]
   if diagnostic_results == nil or #diagnostic_results == 0 then
     return {}
   end
@@ -112,11 +97,12 @@ end
 ---@param bufnr integer
 ---@return vim.Diagnostic[]
 function M.get_mypy_diagnostics(bufnr)
+  local function err(str)
+    L.err('mypy', str)
+  end
   local bufname = vim.fs.abspath(vim.fn.bufname(bufnr))
   local root = vim.fs.root(bufname, root_indicators)
-  -- local setup_cfg = vim.fs.joinpath(root, 'setup.cfg')
-  -- local pyproject_toml = vim.fs.joinpath(root, 'pyproject.toml')
-  local mypy_cli_expr = { vim.fs.joinpath(lint_egration_path, 'mypy.sh') }
+  local mypy_cli_expr = { vim.fs.joinpath(lint_egration_path, 'mypy_for_nvim.sh') }
   local system_opts = { text = true }
   if root ~= nil then
     system_opts.cwd = root
@@ -129,24 +115,26 @@ function M.get_mypy_diagnostics(bufnr)
   if not vim.bo.modified then
     table.insert(mypy_cli_expr, bufname)
   else
-    vim.notify('Lintegration: mypy: buffer modified without saving', vim.log.levels.ERROR, {})
+    err 'buffer modified without saving'
     return {}
   end
 
   local command_result = vim.system(mypy_cli_expr, system_opts):wait()
 
   if command_result.code ~= 0 or command_result.stdout == nil then
-    vim.notify(string.format('Lintegration: mypy: %s', command_result.stderr), vim.log.levels.ERROR, {})
-    return {}
-  end
-  local parse_result = validate_lintegration_json(vim.json.decode(command_result.stdout))
-
-  if parse_result.error ~= nil then
-    vim.notify(string.format('Lintegration: mypy: %s', parse_result.error), vim.log.levels.ERROR, {})
+    err(command_result.stderr)
     return {}
   end
 
-  local diagnostic_results = parse_result.result[bufname]
+  ---@type boolean, LintegrationDiagnosticJSON
+  local ok, parse_result = pcall(vim.json.decode, command_result.stdout)
+
+  if not ok then
+    err(parse_result)
+    return {}
+  end
+
+  local diagnostic_results = parse_result[bufname]
   if diagnostic_results == nil or #diagnostic_results == 0 then
     return {}
   end
@@ -163,7 +151,7 @@ function M.set_diagnostics(buffer)
   vim.list_extend(diagnostics, flake8_diagnostics)
   local mypy_diagnostics = M.get_mypy_diagnostics(bufnr)
   vim.list_extend(diagnostics, mypy_diagnostics)
-  vim.diagnostic.set(ns, bufnr, diagnostics, { underline = false })
+  vim.diagnostic.set(ns, bufnr, diagnostics, {})
 end
 
 ---@param buffer integer | string
