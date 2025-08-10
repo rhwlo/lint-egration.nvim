@@ -20,10 +20,9 @@ end
 
 ---@alias LintegrationDiagnosticJSON {[string]: LintegrationDiagnostic[]}
 
----@param source string
 ---@param buffer integer
 ---@return fun(diagnostic: LintegrationDiagnostic): vim.Diagnostic
-function M.lintegration_diagnostic_to_vim_diagnostic(source, buffer)
+function M.lintegration_diagnostic_to_vim_diagnostic(buffer)
   ---@param diagnostic LintegrationDiagnostic
   ---@return vim.Diagnostic
   local function _ld_to_vd(diagnostic)
@@ -90,7 +89,7 @@ function M.get_flake8_diagnostics(bufnr)
     return {}
   end
 
-  local vim_diagnostics = vim.iter(diagnostic_results):map(M.lintegration_diagnostic_to_vim_diagnostic('flake8', bufnr))
+  local vim_diagnostics = vim.iter(diagnostic_results):map(M.lintegration_diagnostic_to_vim_diagnostic(bufnr))
   return vim_diagnostics:totable()
 end
 
@@ -138,7 +137,7 @@ function M.get_mypy_diagnostics(bufnr)
   if diagnostic_results == nil or #diagnostic_results == 0 then
     return {}
   end
-  local vim_diagnostics = vim.iter(diagnostic_results):map(M.lintegration_diagnostic_to_vim_diagnostic('mypy', bufnr))
+  local vim_diagnostics = vim.iter(diagnostic_results):map(M.lintegration_diagnostic_to_vim_diagnostic(bufnr))
   return vim_diagnostics:totable()
 end
 
