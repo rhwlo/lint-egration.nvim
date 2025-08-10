@@ -5,10 +5,11 @@ local root_indicators = { 'setup.cfg', 'pyproject.toml', '.git' }
 local lint_egration_path = vim.fn.expand '~/.local/bin/'
 
 ---@class LintegrationDiagnostic
----@field column integer
----@field line integer
----@field severity "E" | "W" | "F" | "I" | "H"
+---@field col integer
+---@field lnum integer
+---@field severity vim.diagnostic.Severity
 ---@field message string
+---@field source string
 
 ---@alias LintegrationDiagnosticJSON {[string]: LintegrationDiagnostic[]}
 
@@ -36,20 +37,14 @@ function M.lintegration_diagnostic_to_vim_diagnostic(source, buffer)
   ---@param diagnostic LintegrationDiagnostic
   ---@return vim.Diagnostic
   local function _ld_to_vd(diagnostic)
-    local severity = vim.diagnostic.severity[diagnostic.severity]
-    if severity == nil then
-      severity = vim.diagnostic.severity.ERROR
-    end
-    local column = source == 'mypy' and diagnostic.column or diagnostic.column - 1
-    local line = diagnostic.line - 1
     local vim_diagnostic = {
       bufnr = buffer,
-      lnum = line,
-      col = column,
-      severity = severity,
+      lnum = diagnostic.lnum,
+      col = diagnostic.col,
+      severity = diagnostic.severity,
       message = diagnostic.message,
       namespace = ns,
-      source = source,
+      source = diagnostic.source,
     }
     -- We could use find_encompassing_ancestor, but that gets tricky.
     -- We could use vim.treesitter.get_node, too, but that also has its catches.
@@ -62,20 +57,11 @@ end
 ---@param json_input table
 ---@return {result: LintegrationDiagnosticJSON, error: string?}
 local function validate_lintegration_json(json_input)
-  for file_name, entries in pairs(json_input) do
-    if type(file_name) ~= 'string' then
-      return { result = {}, error = 'expected top level keys to be strings' }
-    end
-    for _, entry in ipairs(entries) do
-      if type(entry) ~= 'table' then
-        return { result = {}, error = 'expected entries to be tables' }
-      end
-      if entry.column == nil or entry.line == nil or entry.severity == nil or entry.message == nil then
-        return { result = {}, error = 'missing expected keys: column, line, severity, message' }
-      end
-    end
-  end
-  return { result = json_input, error = nil }--[[@as {result: LintegrationDiagnosticJSON, error: string?}]]
+  -- skip validation for now; fix this later??
+  return {
+    result = json_input,
+    nil,
+  }
 end
 
 ---@param bufnr integer
